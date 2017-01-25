@@ -31,7 +31,8 @@ ui <- dashboardPage(
   dashboardHeader(title = "World Data"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Popular Languages", tabName = "languages", icon = icon("globe")),
+      menuItem("Popular Languages 1", tabName = "languages1", icon = icon("globe")),
+      menuItem("Popular Languages 2", tabName = "languages2", icon = icon("globe")),
       menuItem("Language Diversity", tabName = "violins", icon = icon("usd")),
       menuItem("Scatterplots", tabName = "scatterplots", icon = icon("line-chart")),
       menuItem("About", tabName = "other", icon = icon("file-text-o"))
@@ -39,22 +40,32 @@ ui <- dashboardPage(
   ),
   dashboardBody(
     tabItems(
-      tabItem(tabName = "languages",
+      tabItem(tabName = "languages1",
               fluidRow(
                 column(width = 3,
-                  selectInput("region", label="Filter by Region",  choices=c("",sort(regions))),
-                  helpText(paste0("You may arrange so as count speakers of a language if that",
-                                  " language is \"commonly-spoken\" in their country, i.e.:",
-                                  " they constitute at least a set percentage of the population",
-                                  " of the country.  Choose that percentage below.")),
-                  numericInput("perc", "Lower bound on percentage: ", 0, min=0, max = 99)
+                  selectInput("region", label="Filter by Region",
+                              choices=c("",sort(regions)))
                 ),
                 column(width = 9,
                   dataTableOutput("tblLanguages")
                 )
               )
       ),
-      
+      tabItem(tabName = "languages2",
+              fluidRow(
+                column(width = 3,
+                       helpText("For any language you select, you'll get a list of the ",
+                                "countries in which it is spoken, in decreasing order of ",
+                                "the percentage of the population that speaks the language. ",
+                                "Note: Some language and country names have ",
+                                "had non-ascii characters deleted.)"),
+                       uiOutput("languageFilter")
+                ),
+                column(width = 9,
+                       dataTableOutput("tblLanguages2")
+                )
+              )
+      ),
       tabItem(tabName = "violins",
               fluidRow(
                 column(width = 3,
@@ -104,35 +115,32 @@ ui <- dashboardPage(
 
 server <- function(input, output, session) {
   
-  # tab1 = languages, tab2 = langProsperity, tab3 = otherPairs
+  # tab1 = languages, tab1.1 = languages2, tab2 = langProsperity, tab3 = otherPairs
   # resp gives response variable (GNPpc or Life expectancy) in langProsperity
   rv <- reactiveValues(tab1 = NULL,
+                       tab1.1 = NULL,
                        tab2 = NULL,
                        tab3 = NULL,
                        resp = NULL)
   
-  #observer for languages:  create sql query, run it, store returned table
+  #observer for languages1:  create sql query, run it, store returned table
   observe({
-    validate(need(input$perc != "", 
-                  label = "Waiting:  the percentage")
-    )
     filterRegion <- input$region != ""
     sql <- paste0("select Language, sum(Percentage/100*Population) as TotalSpeakers from\n",
-                  "(select * from (select * from CountryLanguage where Percentage > ?perc) as poplan\n")
-    
+                  "(select * from CountryLanguage\n")
     if ( !filterRegion ) {
       sql <- paste0(sql,
                     "inner join Country\n")
     } else {
       sql <- paste0(sql,"inner join (select Code, Population from Country where Region=?region) as Country\n") 
     }
-    sql <- paste0(sql, "on poplan.CountryCode=Country.Code) as ccl\n",
+    sql <- paste0(sql, "on CountryLanguage.CountryCode=Country.Code) as ccl\n",
                   "group by Language\n",
                   "order by TotalSpeakers desc;")
     if ( filterRegion ) {
-      query <- sqlInterpolate(pool, sql, perc = input$perc, region = input$region)
+      query <- sqlInterpolate(pool, sql, region = input$region)
     } else {
-      query <- sqlInterpolate(pool, sql, perc = input$perc)
+      query <- sql
     }
     tab <- dbGetQuery(pool, query)
     
@@ -153,6 +161,34 @@ server <- function(input, output, session) {
     # store in reactive values
     rv$tab1 <- tab1
   })
+  
+  # go ahead and get the whole CountryLanguage table, join with Country,
+  # then clean up language names
+  sql <- paste0("select * from CountryLanguage\n",
+                "inner join Country\n",
+                "on CountryLanguage.CountryCode=Country.Code;")
+  CountryLanguages <- dbGetQuery(pool, sql)
+  # remove non-ascii characters from language names
+  languages <- CountryLanguages$Language
+  Encoding(languages) <- "latin1"
+  languages <- iconv(languages, "latin1", "ASCII", sub="")
+  CountryLanguages$Language <- languages
+  # remove non-ascii characters from language names
+  names <- CountryLanguages$Name
+  Encoding(names) <- "latin1"
+  names <- iconv(names, "latin1", "ASCII", sub="")
+  CountryLanguages$Name <- names
+  
+  # easier for me to find this code here rather than in the output section:
+  output$languageFilter <- renderUI({
+    selectInput("language", "Select a language:", choices = sort(languages))
+  })
+  
+  # observer for languages2
+  observe({
+    rv$tab1.1 <- subset(CountryLanguages, Language == input$language)
+  })
+  
   
   # observer for langProsperity
   observe({
@@ -205,6 +241,14 @@ server <- function(input, output, session) {
   
   output$tblLanguages <- renderDataTable({
     rv$tab1
+  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
+  
+  output$tblLanguages2 <- renderDataTable({
+    tab <- rv$tab1.1[order(rv$tab1.1$Percentage, decreasing = TRUE), ]
+    ranks <- 1:nrow(tab)
+    tab <- cbind(ranks, tab)
+    names(tab)[1] <- "Rank"
+    tab[, c("Rank", "Name", "Percentage")]
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
   
   
