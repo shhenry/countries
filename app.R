@@ -62,7 +62,7 @@ ui <- dashboardPage(
                                    choices=c("Per-Capita GNP" = "GNPpc",
                                              "Life Expectancy" = "LifeExpectancy")),
                        selectInput("region2", label="Filter by Region",  choices=c("",sort(regions))),
-                       helpText(paste0("Consider a language to be 'common' in country if it is",
+                       helpText(paste0("Consider a language to be 'common' in a country if it is",
                                        " spoken by at least the percentage you set below.\n",
                                        " We will count the number of common languages in each",
                                        " country.")),
@@ -76,10 +76,27 @@ ui <- dashboardPage(
               )
       ),
       tabItem(tabName = "scatterplots",
-              h2("Other content")
+              fluidRow(
+                column(width = 4,
+                       selectInput("pair", "Choose a pair of variables:", multiple = TRUE,
+                              choices = c("Population Density" = "popDen",
+                                          "Per-capita GNP" = "GNPpc",
+                                          "Life Expectancy" = "LifeExpectancy",
+                                          "Percentage Residing in Capital City" = "percCap"),
+                              selected = c("popDen", "GNPpc")),
+                       selectInput("region3", label="Filter by Region",  choices=c("",sort(regions))),
+                       uiOutput("xyRanges")
+                ),
+                column(width = 8,
+                       plotOutput("scatterplot", hover = "plot_hover"),
+                       br(),
+                       helpText("Hover over a point:  the corresponding country will be identified below."),
+                       tableOutput("plotInfo")
+                       )
+              )
       ),
       tabItem(tabName = "other",
-              h2("Other content")
+              h2("Documentation Coming Soon!")
       )
     )
   )
@@ -166,6 +183,26 @@ server <- function(input, output, session) {
     rv$tab2 <- dbGetQuery(pool, query)
   })
   
+  # for the scatterplots tab we'll go ahead and get one table up front
+  sql <- paste0("select Name, SurfaceArea, Region, Continent, Population, LifeExpectancy, GNP, Capital, IndepYear, popCap from Country\n",
+                "inner join (select ID, Population as popCap from City) as City\n",
+                "on Country.Capital=City.ID;")
+  scatterTable <- dbGetQuery(pool, sql)
+  scatterTable$popDen <- with(scatterTable, round(Population/SurfaceArea,3))
+  scatterTable$GNPpc <- with(scatterTable, round(GNP/Population*1000000, 0))
+  scatterTable$percCap <- with(scatterTable, round(popCap/Population*100,1))
+  rv$tab3 <- scatterTable
+  
+  # observer for scatterplots
+  observe({
+    filterRegion <- input$region3 != ""
+    if ( filterRegion ) {
+      rv$tab3 <- subset(scatterTable, Region == input$region3)
+    } else {
+      rv$tab3 <- scatterTable
+    }
+  })
+  
   output$tblLanguages <- renderDataTable({
     rv$tab1
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
@@ -174,16 +211,16 @@ server <- function(input, output, session) {
   output$boxLanguages <- renderPlot({
     if ( rv$resp == "GNPpc" ) {
       p <- ggplot(rv$tab2, aes(factor(count), GNPpc))
-      print(p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
+      p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
               labs(title = "Per Capita GNP, by Language-Diversity",
                   x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
-                  y = "Per-capita Gross National Product (dollars)"))
+                  y = "Per-capita Gross National Product (dollars)")
     } else {
       p <- ggplot(rv$tab2, aes(factor(count), LifeExpectancy))
-      print(p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
+      p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
               labs(title = "Life Expectancy, by Language-Diversity",
                    x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
-                   y = "Life Expectancy (years)"))
+                   y = "Life Expectancy (years)")
     }
   })
   
@@ -205,6 +242,50 @@ server <- function(input, output, session) {
     aggTable <- cbind(aggMin, aggQ1[, 2], aggMed[ ,2], aggMean[ ,2], aggQ3[ ,2], aggMax[ ,2])
     colnames(aggTable) <- c("Languages", "Min", "Q1", "Median", "Mean", "Q3", "Max")
     aggTable
+  })
+  
+  output$scatterplot <- renderPlot({
+    validate(need(length(input$pair) == 2, 
+                  message = "Please select exactly two distinct variables.")
+    )
+    xName <- input$pair[1]
+    yName <- input$pair[2]
+    x <- get(xName, envir = as.environment(rv$tab3))
+    y <- get(yName, envir = as.environment(rv$tab3))
+    df <- data.frame(x,y)
+    names(df) <- c(xName, yName)
+    xMin <- input$xRange[1]
+    xMax <- input$xRange[2]
+    yMin <- input$yRange[1]
+    yMax <- input$yRange[2]
+    inRange <- x >= xMin & x <= xMax & y >= yMin & y <= yMax
+    df <- subset(df, inRange)
+    p <- ggplot(df, aes_string(xName, yName))
+    p + geom_point()
+  })
+  
+  output$plotInfo <- renderTable({
+    df <- nearPoints(rv$tab3, input$plot_hover, threshold = 10, maxpoints = 1)
+    if ( nrow(df) >0 ) df[, c("Name", "Region", "Continent", "IndepYear")]
+  })
+  
+  output$xyRanges <- renderUI({
+    validate(need(length(input$pair) == 2, 
+                  message = "")
+    )
+    tab <- rv$tab3
+    x <- tab[, input$pair[1]]
+    y <- tab[, input$pair[2]]
+    minX <- min(x, na.rm = T)
+    minY <- min(y, na.rm = T)
+    maxX <- max(x, na.rm = T)
+    maxY <- max(y, na.rm = T)
+    tagList(
+      sliderInput("xRange", "Restrict values of x-axis variable:",
+                  min = minX, max = maxX, value = c(minX, maxX)),
+      sliderInput("yRange", "Restrict values of y-axis variable:",
+                  min = minY, max = maxY, value = c(minY, maxY))
+    )
   })
   
 }

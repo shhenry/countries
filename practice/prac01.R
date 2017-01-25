@@ -7,10 +7,8 @@ conn <- dbConnect(
   password = "guest")
 
 
-# city <- dbReadTable(conn, "City")
-# country <- dbReadTable(conn, "Country")
-# cl <- dbReadTable(conn,"CountryLanguage")
-
-dbGetQuery(conn, "desc Country")
+city <- dbReadTable(conn, "City")
+country <- dbReadTable(conn, "Country")
+cl <- dbReadTable(conn,"CountryLanguage")
 
 dbDisconnect(conn)
