@@ -17,6 +17,8 @@ pool <- dbPool(
   idleTimeout = 60000
 )
 
+# globals
+
 regions <- c("Caribbean","Southern and Central Asia", "Central Africa",           
              "Southern Europe","Middle East","South America",          
              "Polynesia","Antarctica", "Australia and New Zealand",
@@ -43,7 +45,10 @@ ui <- dashboardPage(
       tabItem(tabName = "languages1",
               fluidRow(
                 column(width = 3,
-                  selectInput("region", label="Filter by Region",
+                       helpText("Languages of the world are ranked according to the total number ",
+                                "of people who speak them.  If you like you may restrict to ",
+                                "countries in a particular region of the world."),
+                  selectInput("region", label="Restrict to a Region:",
                               choices=c("",sort(regions)))
                 ),
                 column(width = 9,
@@ -57,7 +62,7 @@ ui <- dashboardPage(
                        helpText("For any language you select, you'll get a list of the ",
                                 "countries in which it is spoken, in decreasing order of ",
                                 "the percentage of the population that speaks the language. ",
-                                "Note: Some language and country names have ",
+                                "(Note: Some language and country names have ",
                                 "had non-ascii characters deleted.)"),
                        uiOutput("languageFilter")
                 ),
@@ -69,14 +74,18 @@ ui <- dashboardPage(
       tabItem(tabName = "violins",
               fluidRow(
                 column(width = 3,
+                       helpText("Here you can investigate the relationship (if any) ",
+                                "between the language-diversity of a country and its ",
+                                "prosperity.  You may choose to restrict to a particular ",
+                                "region of the world."),
                        selectInput("response", label="Prosperity-Measure",
                                    choices=c("Per-Capita GNP" = "GNPpc",
                                              "Life Expectancy" = "LifeExpectancy")),
-                       selectInput("region2", label="Filter by Region",  choices=c("",sort(regions))),
+                       selectInput("region2", label="Restrict to a Region",  choices=c("",sort(regions))),
                        helpText(paste0("Consider a language to be 'common' in a country if it is",
                                        " spoken by at least the percentage you set below.\n",
-                                       " We will count the number of common languages in each",
-                                       " country.")),
+                                       " The number of common languages in each",
+                                       " country is used as a measure of its linguistic diversity.")),
                        numericInput("perc2", "Lower bound on percentage: ", 15, min = 0, max = 99)
                 ),
                 column(width = 9,
@@ -89,7 +98,9 @@ ui <- dashboardPage(
       tabItem(tabName = "scatterplots",
               fluidRow(
                 column(width = 4,
-                       selectInput("pair", "Choose a pair of variables:", multiple = TRUE,
+                       helpText("You may select from four variables, each of which pertains to countries. ",
+                                "The scatterplot shows the association between them."),
+                       selectInput("pair", "Select Two Variables:", multiple = TRUE,
                               choices = c("Population Density" = "popDen",
                                           "Per-capita GNP" = "GNPpc",
                                           "Life Expectancy" = "LifeExpectancy",
@@ -304,8 +315,23 @@ server <- function(input, output, session) {
     yMax <- input$yRange[2]
     inRange <- x >= xMin & x <= xMax & y >= yMin & y <= yMax
     df <- subset(df, inRange)
+    
+    xLabel <- switch(xName,
+                     popDen = "Population density (persons per square km)",
+                     percCap = "Percentage residing in the capital city",
+                     GNPpc = "Per-capita GNP (dollars)",
+                     LifeExpectancy = "Life Expectancy (years)"
+                     )
+    yLabel <- switch(yName,
+                     popDen = "Population density (persons per square km)",
+                     percCap = "Percentage residing in the capital city",
+                     GNPpc = "Per-capita GNP (dollars)",
+                     LifeExpectancy = "Life Expectancy (years)"
+    )
+                      
+    
     p <- ggplot(df, aes_string(xName, yName))
-    p + geom_point()
+    p + geom_point() + labs(x = xLabel, y = yLabel)
   })
   
   output$plotInfo <- renderTable({
