@@ -1,3 +1,5 @@
+# library and globals ---------------------
+
 library(shiny)
 library(shinydashboard)
 library(DBI)
@@ -17,8 +19,6 @@ pool <- dbPool(
   idleTimeout = 60000
 )
 
-# globals
-
 regions <- c("Caribbean","Southern and Central Asia", "Central Africa",           
              "Southern Europe","Middle East","South America",          
              "Polynesia","Antarctica", "Australia and New Zealand",
@@ -29,13 +29,16 @@ regions <- c("Caribbean","Southern and Central Asia", "Central Africa",
              "Melanesia","Micronesia","British Islands",          
              "Micronesia/Caribbean")  
 
+# ui ------------------------------------------
+
 ui <- dashboardPage(
   dashboardHeader(title = "World Data"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Popular Languages 1", tabName = "languages1", icon = icon("globe")),
-      menuItem("Popular Languages 2", tabName = "languages2", icon = icon("globe")),
-      menuItem("Language Diversity", tabName = "violins", icon = icon("usd")),
+      menuItem("Popular Languages", tabName = "languages1", icon = icon("globe")),
+      menuItem("Language/Countries", tabName = "languages2", icon = icon("globe")),
+      menuItem("Country/Languages", tabName = "languages3", icon = icon("globe")),
+      menuItem("Language/Prosperity", tabName = "violins", icon = icon("usd")),
       menuItem("Scatterplots", tabName = "scatterplots", icon = icon("line-chart")),
       menuItem("About", tabName = "other", icon = icon("file-text-o"))
     )
@@ -71,6 +74,21 @@ ui <- dashboardPage(
                 )
               )
       ),
+      tabItem(tabName = "languages3",
+              fluidRow(
+                column(width = 3,
+                       helpText("For any country you select, you'll get a list of the ",
+                                "languages spoken in it, in decreasing order of ",
+                                "the percentage of the population that speaks the language. ",
+                                "(Note: Some language and country names have ",
+                                "had non-ascii characters deleted.)"),
+                       uiOutput("countryFilter")
+                ),
+                column(width = 9,
+                       dataTableOutput("tblLanguages3")
+                )
+              )
+      ),
       tabItem(tabName = "violins",
               fluidRow(
                 column(width = 3,
@@ -89,9 +107,10 @@ ui <- dashboardPage(
                        numericInput("perc2", "Lower bound on percentage: ", 15, min = 0, max = 99)
                 ),
                 column(width = 9,
-                       plotOutput("boxLanguages"),
-                       br(),
-                       tableOutput("tableLanguages")
+                       plotOutput("boxLanguages", hover = "violin_hover"),
+                       tableOutput("tableLanguages"),
+                       helpText("Hover over a point to identify the corresponding country."),
+                       tableOutput("violinInfo")
                 )
               )
       ),
@@ -100,7 +119,7 @@ ui <- dashboardPage(
                 column(width = 4,
                        helpText("You may select from four variables, each of which pertains to countries. ",
                                 "The scatterplot shows the association between them."),
-                       selectInput("pair", "Select Two Variables:", multiple = TRUE,
+                       selectInput("pair", "Select two variables. (Click inside to see all choices.)", multiple = TRUE,
                               choices = c("Population Density" = "popDen",
                                           "Per-capita GNP" = "GNPpc",
                                           "Life Expectancy" = "LifeExpectancy",
@@ -124,16 +143,55 @@ ui <- dashboardPage(
   )
 )
 
+# server ----------------------------------------
+
 server <- function(input, output, session) {
-  
-  # tab1 = languages, tab1.1 = languages2, tab2 = langProsperity, tab3 = otherPairs
+
+# reactive values ----------------------------------------------- 
+  # tab1 = Popular Languages, tab2 = language/country, tab3 = country/languages
+  # tab4 = langProsperity, tab5 = otherPairs
   # resp gives response variable (GNPpc or Life expectancy) in langProsperity
   rv <- reactiveValues(tab1 = NULL,
-                       tab1.1 = NULL,
                        tab2 = NULL,
                        tab3 = NULL,
+                       tab4 = NULL,
+                       tab5 = NULL,
                        resp = NULL)
   
+
+# queries run once -------------------------------
+  
+  # CountryLanguages
+  sql <- paste0("select * from CountryLanguage\n",
+                "inner join Country\n",
+                "on CountryLanguage.CountryCode=Country.Code;")
+  CountryLanguages <- dbGetQuery(pool, sql)
+  # remove non-ascii characters from language names
+  languages <- CountryLanguages$Language
+  Encoding(languages) <- "latin1"
+  languages <- iconv(languages, "latin1", "ASCII", sub="")
+  CountryLanguages$Language <- languages
+  # remove non-ascii characters from language names
+  names <- CountryLanguages$Name
+  Encoding(names) <- "latin1"
+  names <- iconv(names, "latin1", "ASCII", sub="")
+  CountryLanguages$Name <- names
+  
+  # ScatterTable
+  # for the scatterplots tab we'll go ahead and get one table up front
+  sql <- paste0("select Name, SurfaceArea, Region, Continent, Population, LifeExpectancy, GNP, Capital, IndepYear, popCap from Country\n",
+                "inner join (select ID, Population as popCap from City) as City\n",
+                "on Country.Capital=City.ID;")
+  scatterTable <- dbGetQuery(pool, sql)
+  scatterTable$popDen <- with(scatterTable, round(Population/SurfaceArea,3))
+  scatterTable$GNPpc <- with(scatterTable, round(GNP/Population*1000000, 0))
+  scatterTable$percCap <- with(scatterTable, round(popCap/Population*100,1))
+  rv$tab4 <- scatterTable
+
+  
+  
+# Tab 1:  Popular Languages ----------------------------  
+    
   #observer for languages1:  create sql query, run it, store returned table
   observe({
     filterRegion <- input$region != ""
@@ -173,33 +231,58 @@ server <- function(input, output, session) {
     rv$tab1 <- tab1
   })
   
-  # go ahead and get the whole CountryLanguage table, join with Country,
-  # then clean up language names
-  sql <- paste0("select * from CountryLanguage\n",
-                "inner join Country\n",
-                "on CountryLanguage.CountryCode=Country.Code;")
-  CountryLanguages <- dbGetQuery(pool, sql)
-  # remove non-ascii characters from language names
-  languages <- CountryLanguages$Language
-  Encoding(languages) <- "latin1"
-  languages <- iconv(languages, "latin1", "ASCII", sub="")
-  CountryLanguages$Language <- languages
-  # remove non-ascii characters from language names
-  names <- CountryLanguages$Name
-  Encoding(names) <- "latin1"
-  names <- iconv(names, "latin1", "ASCII", sub="")
-  CountryLanguages$Name <- names
+  output$tblLanguages <- renderDataTable({
+    rv$tab1
+  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
+
   
-  # easier for me to find this code here rather than in the output section:
+# Tab 2:  Language/Countries -----------------------    
+
   output$languageFilter <- renderUI({
-    selectInput("language", "Select a language:", choices = sort(languages))
+    selectInput("language", "Select a language:", 
+                choices = sort(unique(CountryLanguages$Language)))
   })
   
   # observer for languages2
   observe({
-    rv$tab1.1 <- subset(CountryLanguages, Language == input$language)
+    rv$tab2 <- subset(CountryLanguages, Language == input$language)
+  })
+
+  output$tblLanguages2 <- renderDataTable({
+    tab <- rv$tab2[order(rv$tab2$Percentage, decreasing = TRUE), ]
+    if ( !is.null(tab) ) {
+      ranks <- 1:nrow(tab)
+      tab <- cbind(ranks, tab)
+      names(tab)[1] <- "Rank"
+      tab[, c("Rank", "Name", "Percentage")]
+    }
+  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10)) 
+  
+# Tab 3:  Country/Languages ---------------------------------  
+  
+  # easier for me to find this code here rather than in the output section:
+  output$countryFilter <- renderUI({
+    selectInput("country", "Select a country:", 
+                choices = sort(unique(CountryLanguages$Name)))
   })
   
+  # observer for languages3
+  observe({
+    rv$tab3 <- subset(CountryLanguages, Name == input$country)
+  })
+  
+  output$tblLanguages3 <- renderDataTable({
+    tab <- rv$tab3[order(rv$tab3$Percentage, decreasing = TRUE), ]
+    if ( !is.null(tab) ) {
+      ranks <- 1:nrow(tab)
+      tab <- cbind(ranks, tab)
+      names(tab)[1] <- "Rank"
+      tab[, c("Rank", "Language", "Percentage")]
+    }
+  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
+  
+
+# Tab 4:  Language/Prosperity ------------------------------------
   
   # observer for langProsperity
   observe({
@@ -213,12 +296,12 @@ server <- function(input, output, session) {
     rv$resp <- ifelse(input$response == "GNPpc",
                       "GNPpc",
                       "life")
-    sql <- paste0("select ", responseCode, ", count(Percentage) as count from\n",
+    sql <- paste0("select ", responseCode, ", count(Percentage) as count, Name, Region, Continent, IndepYear from\n",
                   "(select * from (select * from CountryLanguage where Percentage >= ?perc) as poplan\n")
     if ( !filterRegion ) {
       sql <- paste0(sql,"inner join Country\n")
     } else {
-      sql <- paste0(sql,"inner join (select Code, Population, GNP, LifeExpectancy from Country where Region=?region) as Country\n") 
+      sql <- paste0(sql,"inner join (select Code, Population, GNP, LifeExpectancy, Name, Region, Continent, IndepYear from Country where Region=?region) as Country\n") 
     }
     sql <- paste0(sql, "on poplan.CountryCode=Country.Code) as ccl\n",
                   "group by Code;")
@@ -227,60 +310,50 @@ server <- function(input, output, session) {
     } else {
       query <- sqlInterpolate(pool, sql, perc = input$perc2)
     }
-    rv$tab2 <- dbGetQuery(pool, query)
-  })
-  
-  # for the scatterplots tab we'll go ahead and get one table up front
-  sql <- paste0("select Name, SurfaceArea, Region, Continent, Population, LifeExpectancy, GNP, Capital, IndepYear, popCap from Country\n",
-                "inner join (select ID, Population as popCap from City) as City\n",
-                "on Country.Capital=City.ID;")
-  scatterTable <- dbGetQuery(pool, sql)
-  scatterTable$popDen <- with(scatterTable, round(Population/SurfaceArea,3))
-  scatterTable$GNPpc <- with(scatterTable, round(GNP/Population*1000000, 0))
-  scatterTable$percCap <- with(scatterTable, round(popCap/Population*100,1))
-  rv$tab3 <- scatterTable
-  
-  # observer for scatterplots
-  observe({
-    filterRegion <- input$region3 != ""
-    if ( filterRegion ) {
-      rv$tab3 <- subset(scatterTable, Region == input$region3)
+    tab <- dbGetQuery(pool, query)
+    tab$count <- factor(tab$count)
+    
+    # let's try to track the jittered points
+    set.seed(2020)
+    if ( rv$resp == "GNPpc" ) {
+      p <- ggplot(tab, aes(count, GNPpc)) + geom_violin() + geom_jitter(width = 0.2)
     } else {
-      rv$tab3 <- scatterTable
+      p <- ggplot(tab, aes(count, LifeExpectancy)) + geom_violin() + geom_jitter(width = 0.2)
     }
+    tab$xPoints <- layer_data(p, i = 2)$x
+    
+    # remove non-ascii characters from language names
+    names <- tab$Name
+    Encoding(names) <- "latin1"
+    names <- iconv(names, "latin1", "ASCII", sub="")
+    tab$Name <- names
+    
+    rv$tab4 <- tab
   })
-  
-  output$tblLanguages <- renderDataTable({
-    rv$tab1
-  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
-  
-  output$tblLanguages2 <- renderDataTable({
-    tab <- rv$tab1.1[order(rv$tab1.1$Percentage, decreasing = TRUE), ]
-    ranks <- 1:nrow(tab)
-    tab <- cbind(ranks, tab)
-    names(tab)[1] <- "Rank"
-    tab[, c("Rank", "Name", "Percentage")]
-  }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
-  
   
   output$boxLanguages <- renderPlot({
     if ( rv$resp == "GNPpc" ) {
-      p <- ggplot(rv$tab2, aes(factor(count), GNPpc))
-      p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
-              labs(title = "Per Capita GNP, by Language-Diversity",
-                  x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
-                  y = "Per-capita Gross National Product (dollars)")
+      p <- ggplot(rv$tab4, aes(count, GNPpc))
+      p  + geom_violin(fill = "burlywood") + geom_point(aes(xPoints, GNPpc)) +
+        labs(title = "Per Capita GNP, by Language-Diversity",
+             x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
+             y = "Per-capita Gross National Product (dollars)")
     } else {
-      p <- ggplot(rv$tab2, aes(factor(count), LifeExpectancy))
-      p  + geom_violin(fill = "burlywood") + geom_jitter(width = 0.2) +
-              labs(title = "Life Expectancy, by Language-Diversity",
-                   x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
-                   y = "Life Expectancy (years)")
+      p <- ggplot(rv$tab4, aes(count, LifeExpectancy))
+      p  + geom_violin(fill = "burlywood") + geom_point(aes(xPoints, LifeExpectancy)) +
+        labs(title = "Life Expectancy, by Language-Diversity",
+             x = paste0("Number of languages spoken by at least ",input$perc2,"% of the population"),
+             y = "Life Expectancy (years)")
     }
   })
   
+  output$violinInfo <- renderTable({
+    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
+    if ( nrow(df) > 0 ) df[, c("Name", "Region", "Continent", "IndepYear")]
+  })
+  
   output$tableLanguages <- renderTable({
-    tab <- rv$tab2
+    tab <- rv$tab4
     tab$count <- factor(tab$count)
     response <- ifelse(rv$resp == "GNPpc","GNPpc","LifeExpectancy")
     
@@ -299,14 +372,27 @@ server <- function(input, output, session) {
     aggTable
   })
   
+
+# Tab 5:  Scatterplots -----------------------------------
+  
+  # observer for scatterplots
+  observe({
+    filterRegion <- input$region3 != ""
+    if ( filterRegion ) {
+      rv$tab5 <- subset(scatterTable, Region == input$region3)
+    } else {
+      rv$tab5 <- scatterTable
+    }
+  })
+  
   output$scatterplot <- renderPlot({
     validate(need(length(input$pair) == 2, 
                   message = "Please select exactly two distinct variables.")
     )
     xName <- input$pair[1]
     yName <- input$pair[2]
-    x <- get(xName, envir = as.environment(rv$tab3))
-    y <- get(yName, envir = as.environment(rv$tab3))
+    x <- get(xName, envir = as.environment(rv$tab5))
+    y <- get(yName, envir = as.environment(rv$tab5))
     df <- data.frame(x,y)
     names(df) <- c(xName, yName)
     xMin <- input$xRange[1]
@@ -335,7 +421,7 @@ server <- function(input, output, session) {
   })
   
   output$plotInfo <- renderTable({
-    df <- nearPoints(rv$tab3, input$plot_hover, threshold = 10, maxpoints = 1)
+    df <- nearPoints(rv$tab5, input$plot_hover, threshold = 10, maxpoints = 1)
     if ( nrow(df) >0 ) df[, c("Name", "Region", "Continent", "IndepYear")]
   })
   
@@ -343,7 +429,7 @@ server <- function(input, output, session) {
     validate(need(length(input$pair) == 2, 
                   message = "")
     )
-    tab <- rv$tab3
+    tab <- rv$tab5
     x <- tab[, input$pair[1]]
     y <- tab[, input$pair[2]]
     minX <- min(x, na.rm = T)
@@ -359,5 +445,7 @@ server <- function(input, output, session) {
   })
   
 }
+
+# Run the App -------------------------------------
 
 shinyApp(ui, server)
