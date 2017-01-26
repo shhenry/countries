@@ -5,7 +5,6 @@ library(shinydashboard)
 library(DBI)
 library(pool)
 library(ggplot2)
-library(shinyjs)
 
 
 pool <- dbPool(
@@ -45,7 +44,7 @@ ui <- dashboardPage(
     )
   ),
   dashboardBody(
-    shinyjs::useShinyjs(),
+    #shinyjs::useShinyjs(),
     tabItems(
       tabItem(tabName = "languages1",
               fluidRow(
@@ -111,8 +110,12 @@ ui <- dashboardPage(
                 column(width = 9,
                        plotOutput("boxLanguages", hover = "violin_hover"),
                        tableOutput("tableLanguages"),
-                       helpText("Hover over a point to identify the corresponding country."),
-                       tableOutput("violinInfo")
+                       conditionalPanel(condition = 'output.mouseNearViolinPoint == true',
+                                        uiOutput("violinInfo")),
+                       conditionalPanel(condition = 'output.mouseNearViolinPoint == false',
+                                        helpText("Hover over a point to identify the corresponding country."),
+                                        div(style = "height: 60px;")
+                       )
                 )
               )
       ),
@@ -133,8 +136,11 @@ ui <- dashboardPage(
                 column(width = 8,
                        plotOutput("scatterplot", hover = "plot_hover"),
                        br(),
-                       helpText("Hover over a point:  the corresponding country will be identified below."),
-                       tableOutput("plotInfo")
+                       conditionalPanel(condition = 'output.mouseNearPlotPoint == true',
+                                        uiOutput("plotInfo")),
+                       conditionalPanel(condition = 'output.mouseNearPlotPoint == false',
+                                        helpText("Hover over a point to identify the corresponding country."),
+                                        div(style = "height: 60px;"))
                        )
               )
       ),
@@ -159,7 +165,8 @@ server <- function(input, output, session) {
                        tab4 = NULL,
                        tab5 = NULL,
                        resp = NULL,
-                       nearPoints = 0)
+                       nearViolinPoint = FALSE,
+                       nearPlotPoint = FALSE)
   
 
 # queries run once -------------------------------
@@ -350,26 +357,24 @@ server <- function(input, output, session) {
     }
   })
   
-  output$violinInfo <- renderTable({
+  observeEvent(input$violin_hover, {
     df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
     if ( nrow(df) > 0 ) {
-      rv$nearPoints <- 1
+      rv$nearViolinPoint <- TRUE
     } else {
-      rv$nearPoints <- 0
+      rv$nearViolinPoint <- FALSE
     }
-    df[, c("Name", "Region", "Continent", "IndepYear")]
   })
   
-  outputOptions(output, "violinInfo", suspendWhenHidden = FALSE)
+  output$mouseNearViolinPoint <- reactive({
+    rv$nearViolinPoint
+  })
   
-  observeEvent(rv$nearPoints,{
-    if (rv$nearPoints == 0) {
-      show("tableLanguages")
-      hide("violinInfo")
-    } else {
-      hide("tableLanguages")
-      show("violinInfo")
-    }
+  outputOptions(output, "mouseNearViolinPoint", suspendWhenHidden = FALSE)
+  
+  output$violinInfo <- renderTable({
+    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
+    df[, c("Name", "Region", "Continent", "IndepYear")]
   })
   
   output$tableLanguages <- renderTable({
@@ -440,9 +445,24 @@ server <- function(input, output, session) {
     p + geom_point() + labs(x = xLabel, y = yLabel)
   })
   
+  observeEvent(input$plot_hover, {
+    df <- nearPoints(rv$tab5, input$plot_hover, threshold = 10, maxpoints = 1)
+    if ( nrow(df) > 0 ) {
+      rv$nearPlotPoint <- TRUE
+    } else {
+      rv$nearPlotPoint <- FALSE
+    }
+  })
+  
+  output$mouseNearPlotPoint <- reactive({
+    rv$nearPlotPoint
+  })
+  
+  outputOptions(output, "mouseNearPlotPoint", suspendWhenHidden = FALSE)
+  
   output$plotInfo <- renderTable({
     df <- nearPoints(rv$tab5, input$plot_hover, threshold = 10, maxpoints = 1)
-    if ( nrow(df) >0 ) df[, c("Name", "Region", "Continent", "IndepYear")]
+    df[, c("Name", "Region", "Continent", "IndepYear")]
   })
   
   output$xyRanges <- renderUI({
