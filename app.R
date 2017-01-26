@@ -5,6 +5,7 @@ library(shinydashboard)
 library(DBI)
 library(pool)
 library(ggplot2)
+library(shinyjs)
 
 
 pool <- dbPool(
@@ -44,6 +45,7 @@ ui <- dashboardPage(
     )
   ),
   dashboardBody(
+    shinyjs::useShinyjs(),
     tabItems(
       tabItem(tabName = "languages1",
               fluidRow(
@@ -156,7 +158,8 @@ server <- function(input, output, session) {
                        tab3 = NULL,
                        tab4 = NULL,
                        tab5 = NULL,
-                       resp = NULL)
+                       resp = NULL,
+                       nearPoints = 0)
   
 
 # queries run once -------------------------------
@@ -349,7 +352,24 @@ server <- function(input, output, session) {
   
   output$violinInfo <- renderTable({
     df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
-    if ( nrow(df) > 0 ) df[, c("Name", "Region", "Continent", "IndepYear")]
+    if ( nrow(df) > 0 ) {
+      rv$nearPoints <- 1
+    } else {
+      rv$nearPoints <- 0
+    }
+    df[, c("Name", "Region", "Continent", "IndepYear")]
+  })
+  
+  outputOptions(output, "violinInfo", suspendWhenHidden = FALSE)
+  
+  observeEvent(rv$nearPoints,{
+    if (rv$nearPoints == 0) {
+      show("tableLanguages")
+      hide("violinInfo")
+    } else {
+      hide("tableLanguages")
+      show("violinInfo")
+    }
   })
   
   output$tableLanguages <- renderTable({
