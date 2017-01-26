@@ -5,6 +5,7 @@ library(shinydashboard)
 library(DBI)
 library(pool)
 library(ggplot2)
+library(shinyjs)
 
 
 pool <- dbPool(
@@ -19,6 +20,9 @@ pool <- dbPool(
   idleTimeout = 60000
 )
 
+# globals ------------------------
+
+# for a selectInput
 regions <- c("Caribbean","Southern and Central Asia", "Central Africa",           
              "Southern Europe","Middle East","South America",          
              "Polynesia","Antarctica", "Australia and New Zealand",
@@ -28,6 +32,40 @@ regions <- c("Caribbean","Southern and Central Asia", "Central Africa",
              "Nordic Countries","Northern Africa","Baltic Countries",         
              "Melanesia","Micronesia","British Islands",          
              "Micronesia/Caribbean")  
+
+
+# CountryLanguages
+sql <- paste0("select * from CountryLanguage\n",
+              "inner join Country\n",
+              "on CountryLanguage.CountryCode=Country.Code;")
+CountryLanguages <- dbGetQuery(pool, sql)
+# remove non-ascii characters from language names
+languages <- CountryLanguages$Language
+Encoding(languages) <- "latin1"
+languages <- iconv(languages, "latin1", "ASCII", sub="")
+CountryLanguages$Language <- languages
+# remove non-ascii characters from country names
+names <- CountryLanguages$Name
+Encoding(names) <- "latin1"
+names <- iconv(names, "latin1", "ASCII", sub="")
+CountryLanguages$Name <- names
+
+# ScatterTable
+# for the scatterplots tab we'll go ahead and get one table up front
+sql <- paste0("select Name, SurfaceArea, Region, Continent, Population, LifeExpectancy, GNP, Capital, IndepYear, popCap from Country\n",
+              "inner join (select ID, Population as popCap from City) as City\n",
+              "on Country.Capital=City.ID;")
+scatterTable <- dbGetQuery(pool, sql)
+scatterTable$popDen <- with(scatterTable, round(Population/SurfaceArea,3))
+scatterTable$GNPpc <- with(scatterTable, round(GNP/Population*1000000, 0))
+scatterTable$percCap <- with(scatterTable, round(popCap/Population*100,1))
+# remove non-ascii characters from country names
+names <- scatterTable$Name
+Encoding(names) <- "latin1"
+names <- iconv(names, "latin1", "ASCII", sub="")
+scatterTable$Name <- names
+
+
 
 # ui ------------------------------------------
 
@@ -44,7 +82,7 @@ ui <- dashboardPage(
     )
   ),
   dashboardBody(
-    #shinyjs::useShinyjs(),
+    shinyjs::useShinyjs(),
     tabItems(
       tabItem(tabName = "languages1",
               fluidRow(
@@ -108,14 +146,15 @@ ui <- dashboardPage(
                        numericInput("perc2", "Lower bound on percentage: ", 15, min = 0, max = 99)
                 ),
                 column(width = 9,
-                       plotOutput("boxLanguages", hover = "violin_hover"),
+                       plotOutput("boxLanguages", click = "violin_click"),
                        tableOutput("tableLanguages"),
-                       conditionalPanel(condition = 'output.mouseNearViolinPoint == true',
-                                        uiOutput("violinInfo")),
-                       conditionalPanel(condition = 'output.mouseNearViolinPoint == false',
-                                        helpText("Hover over a point to identify the corresponding country."),
-                                        div(style = "height: 60px;")
-                       )
+                       div(id = "violinInfoWrapper",
+                           style = "height: 130px; overflow: scroll;",
+                           tableOutput("violinInfo"),
+                           tableOutput("violinInfo2")
+                           ),
+                       div(id = "violinInfoPlaceholder", style = "height: 130px;",
+                           helpText("Click near a point to identify the country."))
                 )
               )
       ),
@@ -134,13 +173,14 @@ ui <- dashboardPage(
                        uiOutput("xyRanges")
                 ),
                 column(width = 8,
-                       plotOutput("scatterplot", hover = "plot_hover"),
+                       plotOutput("scatterplot", click = "plot_click"),
                        br(),
-                       conditionalPanel(condition = 'output.mouseNearPlotPoint == true',
-                                        uiOutput("plotInfo")),
-                       conditionalPanel(condition = 'output.mouseNearPlotPoint == false',
-                                        helpText("Hover over a point to identify the corresponding country."),
-                                        div(style = "height: 60px;"))
+                       div(id = "plotInfoWrapper",
+                           style = "height: 130px; overflow: scroll;",
+                           uiOutput("plotInfo")
+                           ),
+                       div(id = "plotInfoPlaceholder", style = "height: 60px;",
+                           helpText("Click near a point to identify the corresponding country."))
                        )
               )
       ),
@@ -163,42 +203,11 @@ server <- function(input, output, session) {
                        tab2 = NULL,
                        tab3 = NULL,
                        tab4 = NULL,
-                       tab5 = NULL,
-                       resp = NULL,
-                       nearViolinPoint = FALSE,
-                       nearPlotPoint = FALSE)
+                       tab5 = scatterTable,
+                       resp = NULL)
   
 
-# queries run once -------------------------------
-  
-  # CountryLanguages
-  sql <- paste0("select * from CountryLanguage\n",
-                "inner join Country\n",
-                "on CountryLanguage.CountryCode=Country.Code;")
-  CountryLanguages <- dbGetQuery(pool, sql)
-  # remove non-ascii characters from language names
-  languages <- CountryLanguages$Language
-  Encoding(languages) <- "latin1"
-  languages <- iconv(languages, "latin1", "ASCII", sub="")
-  CountryLanguages$Language <- languages
-  # remove non-ascii characters from language names
-  names <- CountryLanguages$Name
-  Encoding(names) <- "latin1"
-  names <- iconv(names, "latin1", "ASCII", sub="")
-  CountryLanguages$Name <- names
-  
-  # ScatterTable
-  # for the scatterplots tab we'll go ahead and get one table up front
-  sql <- paste0("select Name, SurfaceArea, Region, Continent, Population, LifeExpectancy, GNP, Capital, IndepYear, popCap from Country\n",
-                "inner join (select ID, Population as popCap from City) as City\n",
-                "on Country.Capital=City.ID;")
-  scatterTable <- dbGetQuery(pool, sql)
-  scatterTable$popDen <- with(scatterTable, round(Population/SurfaceArea,3))
-  scatterTable$GNPpc <- with(scatterTable, round(GNP/Population*1000000, 0))
-  scatterTable$percCap <- with(scatterTable, round(popCap/Population*100,1))
-  rv$tab4 <- scatterTable
 
-  
   
 # Tab 1:  Popular Languages ----------------------------  
     
@@ -306,7 +315,7 @@ server <- function(input, output, session) {
     rv$resp <- ifelse(input$response == "GNPpc",
                       "GNPpc",
                       "life")
-    sql <- paste0("select ", responseCode, ", count(Percentage) as count, Name, Region, Continent, IndepYear from\n",
+    sql <- paste0("select ", responseCode, ", count(Percentage) as count, Code, Name, Region, Continent, IndepYear from\n",
                   "(select * from (select * from CountryLanguage where Percentage >= ?perc) as poplan\n")
     if ( !filterRegion ) {
       sql <- paste0(sql,"inner join Country\n")
@@ -357,25 +366,35 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$violin_hover, {
-    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
+  
+  output$violinInfo <- renderTable({
+    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_click, threshold = 10, maxpoints = 1)
     if ( nrow(df) > 0 ) {
-      rv$nearViolinPoint <- TRUE
+      show("violinInfoWrapper")
+      hide("violinInfoPlaceholder")
     } else {
-      rv$nearViolinPoint <- FALSE
+      hide("violinInfoWrapper")
+      show("violinInfoPlaceholder")
+    }
+    df[, c("Name", "Region", "Continent", "IndepYear")]
+  })
+  
+  outputOptions(output, 'violinInfo', suspendWhenHidden = FALSE)
+  
+  output$violinInfo2 <- renderTable({
+    validate(need(!is.null(input$perc2), message = ""))
+    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_click, threshold = 10, maxpoints = 1)
+    if (nrow(df) > 0 ) {
+      countryName <- df$Code
+      tab <- subset(CountryLanguages, Code == countryName & Percentage >= input$perc2)
+      print(tab)
+      print(order(tab$Percentage, decreasing = TRUE))
+      tab <- tab[order(tab$Percentage, decreasing = TRUE), ]
+      tab[, c("Language", "Percentage")]
     }
   })
   
-  output$mouseNearViolinPoint <- reactive({
-    rv$nearViolinPoint
-  })
-  
-  outputOptions(output, "mouseNearViolinPoint", suspendWhenHidden = FALSE)
-  
-  output$violinInfo <- renderTable({
-    df <- nearPoints(rv$tab4, xvar = "xPoints", input$violin_hover, threshold = 10, maxpoints = 1)
-    df[, c("Name", "Region", "Continent", "IndepYear")]
-  })
+  outputOptions(output, 'violinInfo2', suspendWhenHidden = FALSE)
   
   output$tableLanguages <- renderTable({
     tab <- rv$tab4
@@ -385,12 +404,12 @@ server <- function(input, output, session) {
     q1 <- function(x) quantile(x, 0.25)
     q3 <- function(x) quantile(x, 0.75)
     
-    aggMin <- aggregate(tab[, response], by = list(tab$count), FUN = min)
-    aggQ1 <- aggregate(tab[, response], by = list(tab$count), FUN = q1)
-    aggMed <- aggregate(tab[, response], by = list(tab$count), FUN = median)
-    aggMean <- aggregate(tab[, response], by = list(tab$count), FUN = mean)
-    aggQ3 <- aggregate(tab[, response], by = list(tab$count), FUN = q3)
-    aggMax <- aggregate(tab[, response], by = list(tab$count), FUN = max)
+    aggMin <- aggregate(tab[, response] ~ count, data = tab, FUN = min, na.action = na.omit)
+    aggQ1 <- aggregate(tab[, response] ~ count, data = tab, FUN = q1, na.action = na.omit)
+    aggMed <- aggregate(tab[, response] ~ count, data = tab, FUN = median, na.action = na.omit)
+    aggMean <- aggregate(tab[, response] ~ count, data = tab, FUN = mean, na.action = na.omit)
+    aggQ3 <- aggregate(tab[, response] ~ count, data = tab, FUN = q3, na.action = na.omit)
+    aggMax <- aggregate(tab[, response] ~ count, data = tab, FUN = max, na.action = na.omit)
     
     aggTable <- cbind(aggMin, aggQ1[, 2], aggMed[ ,2], aggMean[ ,2], aggQ3[ ,2], aggMax[ ,2])
     colnames(aggTable) <- c("Languages", "Min", "Q1", "Median", "Mean", "Q3", "Max")
@@ -445,25 +464,19 @@ server <- function(input, output, session) {
     p + geom_point() + labs(x = xLabel, y = yLabel)
   })
   
-  observeEvent(input$plot_hover, {
-    df <- nearPoints(rv$tab5, input$plot_hover, threshold = 10, maxpoints = 1)
-    if ( nrow(df) > 0 ) {
-      rv$nearPlotPoint <- TRUE
-    } else {
-      rv$nearPlotPoint <- FALSE
-    }
-  })
-  
-  output$mouseNearPlotPoint <- reactive({
-    rv$nearPlotPoint
-  })
-  
-  outputOptions(output, "mouseNearPlotPoint", suspendWhenHidden = FALSE)
-  
   output$plotInfo <- renderTable({
-    df <- nearPoints(rv$tab5, input$plot_hover, threshold = 10, maxpoints = 1)
+    df <- nearPoints(rv$tab5, input$plot_click, threshold = 10, maxpoints = 1)
+    if ( nrow(df) == 0 ) {
+      hide("plotInfoWrapper")
+      show("plotInfoPlaceholder")
+    } else {
+      show("plotInfoWrapper")
+      hide("plotInfoPlaceholder")
+    }
     df[, c("Name", "Region", "Continent", "IndepYear")]
   })
+  
+  outputOptions(output, 'plotInfo', suspendWhenHidden = FALSE)
   
   output$xyRanges <- renderUI({
     validate(need(length(input$pair) == 2, 
