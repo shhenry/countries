@@ -78,7 +78,11 @@ ui <- dashboardPage(
       menuItem("Country/Languages", tabName = "languages3", icon = icon("globe")),
       menuItem("Language/Prosperity", tabName = "violins", icon = icon("usd")),
       menuItem("Scatterplots", tabName = "scatterplots", icon = icon("line-chart")),
-      menuItem("About", tabName = "other", icon = icon("file-text-o"))
+      #menuItem("About", tabName = "other", icon = icon("file-text-o"))
+      HTML(paste0('<li><a href="report.pdf" target="_blank">',
+                  '<i class="fa fa-file-pdf-o" aria-hidden="true"></i> Documentation</a></li>')),
+      HTML(paste0('<li><a href="https://github.com/homerhanumat/countries" target="_blank">',
+                  '<i class="fa fa-github" aria-hidden="true"></i> Source Code</a></li>'))
     )
   ),
   dashboardBody(
@@ -170,7 +174,8 @@ ui <- dashboardPage(
                                           "Percentage Residing in Capital City" = "percCap"),
                               selected = c("popDen", "GNPpc")),
                        selectInput("region3", label="Filter by Region",  choices=c("",sort(regions))),
-                       uiOutput("xyRanges")
+                       uiOutput("xyRanges"),
+                       checkboxInput("smoother", "Add a Smoother", value = FALSE)
                 ),
                 column(width = 8,
                        plotOutput("scatterplot", click = "plot_click"),
@@ -460,8 +465,11 @@ server <- function(input, output, session) {
     )
                       
     
-    p <- ggplot(df, aes_string(xName, yName))
-    p + geom_point() + labs(x = xLabel, y = yLabel)
+    p <- ggplot(df, aes_string(xName, yName)) + geom_point() + labs(x = xLabel, y = yLabel)
+    if ( input$smoother ) {
+      p <- p + geom_smooth()
+    }
+    p
   })
   
   output$plotInfo <- renderTable({
