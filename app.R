@@ -283,8 +283,7 @@ server <- function(input, output, session) {
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10)) 
   
 # Tab 3:  Country/Languages ---------------------------------  
-  
-  # easier for me to find this code here rather than in the output section:
+
   output$countryFilter <- renderUI({
     selectInput("country", "Select a country:", 
                 choices = sort(unique(CountryLanguages$Name)))
