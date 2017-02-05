@@ -24,6 +24,20 @@ var2 <- rep("filler", 50)
 var3 <- rep("more filler", 50)
 tab <- data.frame("First Varible"= var1, Second=var2, Third=var3)
 
+# fake data for summary data display in Languages/Prosperity
+nas <- rep(NA, 3)
+tab2 <- data.frame(count = 1:3,
+                   min = nas, Q1 = nas, median = nas, mean = nas, Q3 = nas, max = nas)
+
+# plot filler
+plotFill <- ggplot(mtcars, aes(wt, mpg)) + 
+              annotate("text", x = 3.5, y = 20, size = 10, label = "Plot Here") +
+              theme(axis.text.y=element_blank(),
+                    axis.ticks.y=element_blank(),
+                    axis.text.x=element_blank(),
+                    axis.ticks.x=element_blank()) +
+              labs(x = "x-axis title here", y = "y-axis title here")
+
 # ui ------------------------------------------
 
 ui <- dashboardPage(
@@ -36,9 +50,9 @@ ui <- dashboardPage(
       menuItem("Language/Prosperity", tabName = "violins", icon = icon("usd")),
       menuItem("Scatterplots", tabName = "scatterplots", icon = icon("line-chart")),
       #menuItem("About", tabName = "other", icon = icon("file-text-o"))
-      HTML(paste0('<li><a href="report.pdf" target="_blank">',
+      HTML(paste0('<li><a href="#" target="_blank">',
                   '<i class="fa fa-file-pdf-o" aria-hidden="true"></i> Documentation</a></li>')),
-      HTML(paste0('<li><a href="https://github.com/homerhanumat/countries" target="_blank">',
+      HTML(paste0('<li><a href="#">',
                   '<i class="fa fa-github" aria-hidden="true"></i> Source Code</a></li>'))
     )
   ),
@@ -108,11 +122,11 @@ ui <- dashboardPage(
                 column(width = 9,
                        plotOutput("boxLanguages", click = "violin_click"),
                        tableOutput("tableLanguages"),
-                       div(id = "violinInfoWrapper",
-                           style = "height: 130px; overflow: scroll;",
-                           tableOutput("violinInfo"),
-                           tableOutput("violinInfo2")
-                           ),
+                       # div(id = "violinInfoWrapper",
+                       #     style = "height: 130px; overflow: scroll;",
+                       #     tableOutput("violinInfo"),
+                       #     tableOutput("violinInfo2")
+                       #     ),
                        div(id = "violinInfoPlaceholder", style = "height: 130px;",
                            helpText("Click near a point to identify the country."))
                 )
@@ -136,10 +150,10 @@ ui <- dashboardPage(
                 column(width = 8,
                        plotOutput("scatterplot", click = "plot_click"),
                        br(),
-                       div(id = "plotInfoWrapper",
-                           style = "height: 130px; overflow: scroll;",
-                           uiOutput("plotInfo")
-                           ),
+                       # div(id = "plotInfoWrapper",
+                       #     style = "height: 130px; overflow: scroll;",
+                       #     uiOutput("plotInfo")
+                       #     ),
                        div(id = "plotInfoPlaceholder", style = "height: 60px;",
                            helpText("Click near a point to identify the corresponding country."))
                        )
@@ -192,18 +206,18 @@ server <- function(input, output, session) {
   
   
   output$boxLanguages <- renderPlot({
-    ggplot(mtcars, aes(wt, mpg)) + annotate("text", x = 3.5, y = 20, size = 5, label = "Plot Here")
+    plotFill
   })
   
   output$tableLanguages <- renderTable({
-    tab <- "Summary data here"
+    tab2
   })
   
 
 # Tab 5:  Scatterplots -----------------------------------
   
   output$scatterplot <- renderPlot({
-    ggplot(mtcars, aes(wt, mpg)) + annotate("text", x = 3.5, y = 20, size = 5, label = "Plot Here")
+    plotFill
   })
   
   output$xyRanges <- renderUI({
