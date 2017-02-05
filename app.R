@@ -18,7 +18,11 @@ regions <- c("Caribbean","Southern and Central Asia", "Central Africa",
              "Melanesia","Micronesia","British Islands",          
              "Micronesia/Caribbean")  
 
-
+# fake data for mock tables
+var1 <- 1:50
+var2 <- rep("filler", 50)
+var3 <- rep("more filler", 50)
+tab <- data.frame("First Varible"= var1, Second=var2, Third=var3)
 
 # ui ------------------------------------------
 
@@ -157,7 +161,7 @@ server <- function(input, output, session) {
 
   
   output$tblLanguages <- renderDataTable({
-    NULL
+    tab
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
 
   
@@ -169,7 +173,7 @@ server <- function(input, output, session) {
   })
 
   output$tblLanguages2 <- renderDataTable({
-    NULL
+    tab
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10)) 
   
 # Tab 3:  Country/Languages ---------------------------------  
@@ -180,7 +184,7 @@ server <- function(input, output, session) {
   })
   
   output$tblLanguages3 <- renderDataTable({
-    NULL
+    tab
   }, options = list(lengthMenu = c(10, 15, 20), pageLength = 10))
   
 
