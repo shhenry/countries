@@ -50,9 +50,9 @@ ui <- dashboardPage(
       menuItem("Language/Prosperity", tabName = "violins", icon = icon("usd")),
       menuItem("Scatterplots", tabName = "scatterplots", icon = icon("line-chart")),
       #menuItem("About", tabName = "other", icon = icon("file-text-o"))
-      HTML(paste0('<li><a href="#" target="_blank">',
+      HTML(paste0('<li><a href="report.pdf" target="_blank">',
                   '<i class="fa fa-file-pdf-o" aria-hidden="true"></i> Documentation</a></li>')),
-      HTML(paste0('<li><a href="#">',
+      HTML(paste0('<li><a href="https://github.com/homerhanumat/countries">',
                   '<i class="fa fa-github" aria-hidden="true"></i> Source Code</a></li>'))
     )
   ),
