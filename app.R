@@ -12,10 +12,10 @@ library(shiny)
 # ui ------------------------------------------
 
 ui <- dashboardPage(
-  dashboardHeader(title = "World Data"),
+  dashboardHeader(title = "Zipline"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Popular Languages", tabName = "languages1", icon = icon("globe")),
+      menuItem("Calculate Zip", tabName = "languages1", icon = icon("globe")),
       HTML(paste0('<li><a href="report.pdf" target="_blank">',
                   '<i class="fa fa-file-pdf-o" aria-hidden="true"></i> Documentation</a></li>')),
       HTML(paste0('<li><a href="https://github.com/shhenry/zipline" target="_blank">',
@@ -27,10 +27,10 @@ ui <- dashboardPage(
       tabItem(tabName = "languages1",
               fluidRow(
                 column(width = 3,
-                       helpText("Languages of the world are ranked according to the total number ",
-                                "of people who speak them.  If you like you may restrict to ",
-                                "countries in a particular region of the world."),
-                  selectInput("region", label="Restrict to a Region:",
+                       helpText("Ziplining is a fun adrenaline filled adventure, ",
+                                "if you decide you want to make your own zipline, ",
+                                "use this calculator to find the right construction."),
+                  selectInput("region", label="distance between points:",
                               choices=c(letters))
                 ),
                 column(width = 9,
