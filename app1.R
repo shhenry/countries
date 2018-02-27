@@ -2,9 +2,6 @@
 
 library(shiny)
 library(plotly)
-# library(ggplot2)
-
-# globals ------------------------
 
 # ui ------------------------------------------
 ui <- dashboardPage(
@@ -42,9 +39,10 @@ ui <- dashboardPage(
 # server ----------------------------------------
 
 server <- function(input, output, session) {
-  
   # x is xo, y is y0, x1 is x-value for which you want y, n is number of steps,
   # f is the function f in the DE dy/dx = f(f,)
+  # do thalf and tnew instead of x
+  #four functions f1 f2 f3 f4, each block of rk will have to run each f 
   rungeKutta <- function(x, y, x1, n, f) {
     h <- (x1 - x) / n
     X <- numeric(n + 1)
@@ -54,6 +52,7 @@ server <- function(input, output, session) {
     for ( i in 1:n ) {
       xhalf <- x + 0.5 * h
       xnew <- x + h
+      #run this for each 4
       k1 <- f(x, y)
       u1 <- y + 0.5 * h *k1
       k2 <- f(xhalf, u1)
@@ -69,14 +68,19 @@ server <- function(input, output, session) {
     }
     data.frame(x = X, y = Y)
   }
-  
+  # 45/n+1 assume max length of the ride to determine array size. trunkate the array when x gets to some 
+  # value while x does not exceed the user input, keep calculating 
   # this is the f(x,y) in the DE:  dy/dx = f(x, y)
-  myDEFunc <- function(x, y) {
-    y
+  # xp(t) = Vx(t), x(0)=0
+  # yp(t) = Vy(t), y(0)=6
+  # Vxp(t) = k1, Vx(0)=0
+  # five columns of output not two
+  myDEFunc <- function(z1,z2,z3,z4,t) {
+    (z2,.58591,z4,-.035156)
+    #(z2,f(z1,z2,z3,z4,t),z4,g(z1,z2,z3,z4,t))
   }
-  # Tab 1:  Popular Languages ----------------------------  
   
-  
+#--------------------------------------------------#
   
   output$tblLanguages <- renderText({
     input$region
