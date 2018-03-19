@@ -9,12 +9,12 @@ output:
 ---
 
 ```{r}
-initz <- c(5,10,0,10)
+initz <- c(0,0,0,6)
 mySystem <- list(
-  dz1 = function(t,zs) zs[2],
-  dz2 = function(t,zs) zs[1]^2+zs[3]+2*zs[4]+2*t,
-  dz3 = function(t,zs) zs[4],
-  dz4 = function(t,zs) zs[1]+zs[2]+3*zs[3]^2+5*t
+  dz1 = function(t,zs) .58591,
+  dz2 = function(t,zs) -0.35156,
+  dz3 = function(t,zs) zs[1],
+  dz4 = function(t,zs) zs[2]
 )
 
 rungeKutta <- function(t0,z0,t1,steps,fns){
@@ -26,7 +26,8 @@ rungeKutta <- function(t0,z0,t1,steps,fns){
  
   for(i in 2:(steps+1)){
     old <- results [i-1,]
-    args <- list(t_old=old[1], z_old=old[-1])
+    t_old <- old[1]
+    z_old <- old [-1]
     k1 <- numeric(size)
     k2 <- numeric(size)
     k3 <- numeric(size)
@@ -34,24 +35,31 @@ rungeKutta <- function(t0,z0,t1,steps,fns){
     
     #stage 1 loop 
       for(m in 1:size){
-        k1[m] <- h*fns[[m]](args$t_old,args$z_old)}
+        k1[m] <- h*fns[[m]](t_old,z_old)}
     #stage 2 loop
       for(m in 1:size){
-        k2[m] <- h*fns[[m]](args$t_old*h/2, args$z_old+k1/2)}
+        k2[m] <- h*fns[[m]](t_old+h/2, z_old+k1/2)}
     #stage 3 loop
       for(m in 1:size){
-      k3[m] <- h*fns[[m]](args$t_old*h/2, args$z_old+k2/2)}
+      k3[m] <- h*fns[[m]](t_old+h/2, z_old+k2/2)}
     #stage 4 loop
       for(m in 1:size){
-      k4[m] <- h*fns[[m]](args$t_old*h, args$z_old+k3)}
+      k4[m] <- h*fns[[m]](t_old+h, z_old+k3)}
    
      k <- (1/6)*(k1+2*k2+2*k3+k4)
     
     results [i,1] <- old[1]+h
-    results[i,-1] <- k
+    results[i,-1] <- z_old+k
   }
 
 colnames(results) <- c("t",paste0("z",1:size))
-as.data.frame(results)}
+as.data.frame(results)
+}
+
+rungeKutta(0,initz,5,100,mySystem)
+
+init2 <- 1
+eqs <- list(dz1 = function(t,zs) zs[1])
+rungeKutta(0, init2,1,100,eqs)
 
 ```

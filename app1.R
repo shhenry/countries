@@ -1,14 +1,87 @@
 # library and globals ---------------------
 
 library(shiny)
-library(plotly)
+library(ggplot2)
+
+# globals -------------------------------------
+
+# need to add back the horizontal distance, then while the x distance is less or equal to graph 
+# as long as the x cor is less than the imputed amount or the time hasnt exeeded 
+# change constants to formula 
+# find T and A for the formula 
+# put in all needed inputs 
+
+mySystem <- list(
+  dz1 = function(t,zs) .58591,
+  dz2 = function(t,zs) -0.35156,
+  dz3 = function(t,zs) zs[1],
+  dz4 = function(t,zs) zs[2]
+)
+
+# no upper limit on time, if x cor is smaller than the one before theyre stuck
+
+rungeKutta <- function(t0,z0,xf,stepSize,fns){
+  h <- stepSize
+  t <- numeric(100000)
+  size <- length(fns)
+  results <- matrix(0,nrow=100000+1,ncol=size+1)
+  results[1,] <- c(t0,z0)
+  
+  counter <- 0
+  stuck <- FALSE
+  targetReached <- FALSE
+  i <-2
+  while(!stuck & !targetReached & counter < 100000){
+    counter <- counter+1
+  
+    old <- results [i-1,]
+    t_old <- old[1]
+    z_old <- old [-1]
+    k1 <- numeric(size)
+    k2 <- numeric(size)
+    k3 <- numeric(size)
+    k4 <- numeric(size)
+    
+    #stage 1 loop 
+    for(m in 1:size){
+      k1[m] <- h*fns[[m]](t_old,z_old)}
+    #stage 2 loop
+    for(m in 1:size){
+      k2[m] <- h*fns[[m]](t_old+h/2, z_old+k1/2)}
+    #stage 3 loop
+    for(m in 1:size){
+      k3[m] <- h*fns[[m]](t_old+h/2, z_old+k2/2)}
+    #stage 4 loop
+    for(m in 1:size){
+      k4[m] <- h*fns[[m]](t_old+h, z_old+k3)}
+    
+    k <- (1/6)*(k1+2*k2+2*k3+k4)
+    
+    results [i,1] <- old[1]+h
+    results[i,-1] <- z_old+k 
+    
+     if (results [i,2] < results[i-1,2]){
+      stuck <- TRUE
+    }
+    if (results [i,2] >= xf){
+      targetReached <- TRUE
+      print(xf)
+    }
+    i <- i+1
+
+  }
+  
+  colnames(results) <- c("t",paste0("z",1:size))
+  as.data.frame(results)[1:(counter+1), ]
+}
 
 # ui ------------------------------------------
 ui <- dashboardPage(
   dashboardHeader(title = "Zipline"),
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Runge-Kutta Play", tabName = "runge", icon = icon("globe")),
+      menuItem("Data", tabName = "runge", icon = icon("globe")),
+      menuItem("Graph", tabName = "plot", icon = icon("line-chart")),
       HTML(paste0('<li><a href="report.pdf" target="_blank">',
                   '<i class="fa fa-file-pdf-o" aria-hidden="true"></i> Documentation</a></li>')),
       HTML(paste0('<li><a href="https://github.com/shhenry/zipline" target="_blank">',
@@ -21,16 +94,21 @@ ui <- dashboardPage(
               fluidRow(
                 column(width = 3,
                        helpText("Enter inputs."),
-                       numericInput("x0", value = 0, label="starting x-value"),
-                       numericInput("y0", value = 1, label="starting y-value"),
-                       numericInput("x1", value = 1,label="ending x-value"),
-                       numericInput("n", value = 100, min =1, step = 1, label="number of steps")
+                       numericInput("y0", value = 100, label="zip tower height"),
+                       numericInput("h", value = .01, min =.000001, max = 1, 
+                                    step = .001, label="step size"),
+                       numericInput("xf", value = 50, label = "distance between points")
                 ),
                 column(width = 9,
                        dataTableOutput("xyvalues")
                 )
               )
-      )
+      ),
+      tabItem(tabName = "plot",
+              fluidRow(
+                plotOutput("plot")
+                )
+              )
     )
   )
 )
@@ -39,62 +117,28 @@ ui <- dashboardPage(
 # server ----------------------------------------
 
 server <- function(input, output, session) {
-  # x is xo, y is y0, x1 is x-value for which you want y, n is number of steps,
-  # f is the function f in the DE dy/dx = f(f,)
-  # do thalf and tnew instead of x
-  #four functions f1 f2 f3 f4, each block of rk will have to run each f 
-  rungeKutta <- function(x, y, x1, n, f) {
-    h <- (x1 - x) / n
-    X <- numeric(n + 1)
-    Y <- numeric(n + 1)
-    X[1] <- x
-    Y[1] <- y
-    for ( i in 1:n ) {
-      xhalf <- x + 0.5 * h
-      xnew <- x + h
-      #run this for each 4
-      k1 <- f(x, y)
-      u1 <- y + 0.5 * h *k1
-      k2 <- f(xhalf, u1)
-      u2 <- y + 0.5 * h * k2
-      k3 <- f(xhalf, u2)
-      u3 <- y + h * k3
-      k4 <- f(xnew, u3)
-      k <- (k1 + 2 * k2 + 2 * k3 + k4) / 6
-      x <- xnew
-      y <- y + k * h
-      X[i + 1] <- x
-      Y[i + 1] <- y
-    }
-    data.frame(x = X, y = Y)
-  }
-  # 45/n+1 assume max length of the ride to determine array size. trunkate the array when x gets to some 
-  # value while x does not exceed the user input, keep calculating 
-  # this is the f(x,y) in the DE:  dy/dx = f(x, y)
-  # xp(t) = Vx(t), x(0)=0
-  # yp(t) = Vy(t), y(0)=6
-  # Vxp(t) = k1, Vx(0)=0
-  # five columns of output not two
-  myDEFunc <- function(z1,z2,z3,z4,t) {
-    (z2,.58591,z4,-.035156)
-    #(z2,f(z1,z2,z3,z4,t),z4,g(z1,z2,z3,z4,t))
-  }
-  
+
 #--------------------------------------------------#
+  
+  res <- reactiveValues(
+    position = NULL
+  )
   
   output$tblLanguages <- renderText({
     input$region
   })
-  output$plot <- renderPlotly({
-    plot_ly(mtcars, x = ~mpg, y = ~wt)
+  output$plot <- renderPlot({
+    ggplot(data = res$position, mapping = aes(x = x, y = y)) +
+      geom_line()
   })
-  output$event <- renderPrint({
-    d <- event_data("plotly_hover")
-    if (is.null(d)) "Hover on a point!" else d
-  })
+
   output$xyvalues <- renderDataTable({
-    rungeKutta(x = input$x0, y = input$y0, x1 = input$x1, n = input$n, f = myDEFunc)
-  })
+    rk <- rungeKutta(t0 = 0, z0 = c(0,0,0,input$y0), xf = input$xf,  
+               stepSize = ceiling(120/(input$h)), fns = mySystem)
+    res$position <- data.frame(x = rk$z3, y = rk$z4)
+    rk
+  }, options = list(pageLength = 10,
+                    lengthMenu = c(5,10,15)))
 }
 
 # Run the App -------------------------------------
