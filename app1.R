@@ -1,15 +1,10 @@
 # library and globals ---------------------
 
 library(shiny)
+library(shinydashboard)
 library(ggplot2)
 
 # globals -------------------------------------
-
-# need to add back the horizontal distance, then while the x distance is less or equal to graph 
-# as long as the x cor is less than the imputed amount or the time hasnt exeeded 
-# change constants to formula 
-# find T and A for the formula 
-# put in all needed inputs 
 
 mySystem <- list(
   dz1 = function(t,zs) .58591,
@@ -21,7 +16,7 @@ mySystem <- list(
 # no upper limit on time, if x cor is smaller than the one before theyre stuck
 
 rungeKutta <- function(t0,z0,xf,stepSize,fns){
-  h <- stepSize
+  n <- stepSize
   t <- numeric(100000)
   size <- length(fns)
   results <- matrix(0,nrow=100000+1,ncol=size+1)
@@ -44,20 +39,20 @@ rungeKutta <- function(t0,z0,xf,stepSize,fns){
     
     #stage 1 loop 
     for(m in 1:size){
-      k1[m] <- h*fns[[m]](t_old,z_old)}
+      k1[m] <- n*fns[[m]](t_old,z_old)}
     #stage 2 loop
     for(m in 1:size){
-      k2[m] <- h*fns[[m]](t_old+h/2, z_old+k1/2)}
+      k2[m] <- n*fns[[m]](t_old+n/2, z_old+k1/2)}
     #stage 3 loop
     for(m in 1:size){
-      k3[m] <- h*fns[[m]](t_old+h/2, z_old+k2/2)}
+      k3[m] <- n*fns[[m]](t_old+n/2, z_old+k2/2)}
     #stage 4 loop
     for(m in 1:size){
-      k4[m] <- h*fns[[m]](t_old+h, z_old+k3)}
+      k4[m] <- n*fns[[m]](t_old+n, z_old+k3)}
     
     k <- (1/6)*(k1+2*k2+2*k3+k4)
     
-    results [i,1] <- old[1]+h
+    results [i,1] <- old[1]+n
     results[i,-1] <- z_old+k 
     
      if (results [i,2] < results[i-1,2]){
@@ -65,7 +60,6 @@ rungeKutta <- function(t0,z0,xf,stepSize,fns){
     }
     if (results [i,2] >= xf){
       targetReached <- TRUE
-      print(xf)
     }
     i <- i+1
 
@@ -95,7 +89,7 @@ ui <- dashboardPage(
                 column(width = 3,
                        helpText("Enter inputs."),
                        numericInput("y0", value = 100, label="zip tower height"),
-                       numericInput("h", value = .01, min =.000001, max = 1, 
+                       numericInput("n", value = .01, min =.000001, max = 1, 
                                     step = .001, label="step size"),
                        numericInput("xf", value = 50, label = "distance between points")
                 ),
@@ -134,7 +128,7 @@ server <- function(input, output, session) {
 
   output$xyvalues <- renderDataTable({
     rk <- rungeKutta(t0 = 0, z0 = c(0,0,0,input$y0), xf = input$xf,  
-               stepSize = ceiling(120/(input$h)), fns = mySystem)
+               stepSize = ceiling(120/(input$n)), fns = mySystem)
     res$position <- data.frame(x = rk$z3, y = rk$z4)
     rk
   }, options = list(pageLength = 10,
